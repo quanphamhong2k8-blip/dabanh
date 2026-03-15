@@ -29,26 +29,45 @@
 
         #controls-wrapper {
             position: absolute; bottom: 30px; left: 30px;
-            display: grid; grid-template-columns: repeat(3, 64px);
-            grid-template-rows: repeat(2, 64px); gap: 8px; z-index: 100;
+            width: 160px; height: 160px; z-index: 100;
         }
-        .move-btn {
-            width: 64px; height: 64px; background: rgba(0, 212, 255, 0.08);
-            border: 2px solid #00d4ff; border-radius: 12px; color: #00d4ff;
-            font-size: 20px; font-weight: bold;
+        #joystick-zone {
+            width: 160px; height: 160px; border-radius: 50%;
+            background: rgba(0,212,255,0.06);
+            border: 2px solid rgba(0,212,255,0.35);
+            box-shadow: 0 0 18px rgba(0,212,255,0.15);
+            position: relative; touch-action: none; user-select: none;
             display: flex; align-items: center; justify-content: center;
-            user-select: none; cursor: pointer; transition: all 0.1s;
-            box-shadow: 0 0 10px rgba(0,212,255,0.15);
         }
-        .move-btn:active, .move-btn.pressed {
-            background: rgba(0, 212, 255, 0.35);
-            box-shadow: 0 0 20px rgba(0,212,255,0.5);
-            transform: scale(0.93);
+        /* vạch chữ thập mờ */
+        #joystick-zone::before, #joystick-zone::after {
+            content: ''; position: absolute; background: rgba(0,212,255,0.18);
+            border-radius: 2px;
         }
-        #btn-up    { grid-column: 2; grid-row: 1; }
-        #btn-left  { grid-column: 1; grid-row: 2; }
-        #btn-down  { grid-column: 2; grid-row: 2; }
-        #btn-right { grid-column: 3; grid-row: 2; }
+        #joystick-zone::before { width: 2px; height: 120px; }
+        #joystick-zone::after  { width: 120px; height: 2px; }
+        /* mũi tên gợi ý */
+        .joy-arrow {
+            position: absolute; color: rgba(0,212,255,0.35);
+            font-size: 18px; pointer-events: none; line-height: 1;
+        }
+        .joy-arrow.top    { top: 10px;  left: 50%; transform: translateX(-50%); }
+        .joy-arrow.bottom { bottom: 10px; left: 50%; transform: translateX(-50%); }
+        .joy-arrow.left   { left: 10px; top: 50%; transform: translateY(-50%); }
+        .joy-arrow.right  { right: 10px; top: 50%; transform: translateY(-50%); }
+        #joystick-thumb {
+            width: 56px; height: 56px; border-radius: 50%;
+            background: radial-gradient(circle at 38% 38%, rgba(0,212,255,0.55), rgba(0,80,120,0.7));
+            border: 2px solid #00d4ff;
+            box-shadow: 0 0 14px rgba(0,212,255,0.5);
+            position: absolute; transform: translate(-50%,-50%);
+            left: 50%; top: 50%;
+            transition: box-shadow 0.1s;
+            pointer-events: none;
+        }
+        #joystick-thumb.active {
+            box-shadow: 0 0 28px rgba(0,212,255,0.85);
+        }
 
         #room-input {
             padding: 12px 15px; border-radius: 8px;
@@ -87,6 +106,20 @@
             background: rgba(0,0,0,0.5); padding: 6px 12px;
             border-radius: 8px; border: 1px solid rgba(0,212,255,0.2);
         }
+        #toggle-ui-btn {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.7); border: 1px solid #00d4ff;
+            color: #00d4ff; padding: 6px 14px; border-radius: 20px;
+            cursor: pointer; font-size: 11px; letter-spacing: 1px;
+            z-index: 200; transition: opacity 0.3s, background 0.2s; user-select: none;
+            opacity: 0.15;
+        }
+        #toggle-ui-btn:hover { background: rgba(0,212,255,0.2); opacity: 1; }
+        .ui-hidden #ui-panel,
+        .ui-hidden #status-bar,
+        .ui-hidden .controls-hint,
+        .ui-hidden #chat-panel { opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+        #ui-panel, #status-bar, .controls-hint, #chat-panel { transition: opacity 0.3s; }
 
         #status-bar {
             position: absolute; top: 20px; right: 20px;
@@ -182,13 +215,17 @@
     </div>
 
     <div id="controls-wrapper">
-        <div class="move-btn" id="btn-up">▲</div>
-        <div class="move-btn" id="btn-left">◀</div>
-        <div class="move-btn" id="btn-down">▼</div>
-        <div class="move-btn" id="btn-right">▶</div>
+        <div id="joystick-zone">
+            <span class="joy-arrow top">▲</span>
+            <span class="joy-arrow bottom">▼</span>
+            <span class="joy-arrow left">◀</span>
+            <span class="joy-arrow right">▶</span>
+            <div id="joystick-thumb"></div>
+        </div>
     </div>
 
     <div class="controls-hint">W A S D hoặc nút bấm để di chuyển</div>
+    <button id="toggle-ui-btn">👁 ẨN UI</button>
 
     <script type="importmap">
         {
@@ -251,6 +288,13 @@
 
         initScene();
         setupButtonControls();
+        const toggleBtn = document.getElementById('toggle-ui-btn');
+        let uiVisible = true;
+        toggleBtn.addEventListener('click', () => {
+            uiVisible = !uiVisible;
+            document.body.classList.toggle('ui-hidden', !uiVisible);
+            toggleBtn.textContent = uiVisible ? '👁 ẨN UI' : '👁 HIỆN UI';
+        });
 
         document.getElementById('join-btn').onclick = joinRoom;
         document.getElementById('room-input').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); });
@@ -317,7 +361,7 @@
             });
             window.addEventListener('keyup',   e => { if (e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = false; });
 
-            loadFlamingo();
+    
             createSoccerBall();
             animate();
         }
@@ -511,17 +555,53 @@
         }
 
         function setupButtonControls() {
-            const bindBtn = (id, key) => {
-                const btn = document.getElementById(id);
-                const press   = e => { e.preventDefault(); keys[key] = true;  btn.classList.add('pressed'); };
-                const release = e => { e.preventDefault(); keys[key] = false; btn.classList.remove('pressed'); };
-                btn.addEventListener('pointerdown',  press,   { passive: false });
-                btn.addEventListener('pointerup',    release, { passive: false });
-                btn.addEventListener('pointerleave', release, { passive: false });
-                btn.addEventListener('pointercancel',release, { passive: false });
-            };
-            bindBtn('btn-up', 'w'); bindBtn('btn-left', 'a');
-            bindBtn('btn-down', 's'); bindBtn('btn-right', 'd');
+            const zone  = document.getElementById('joystick-zone');
+            const thumb = document.getElementById('joystick-thumb');
+            const RADIUS = 52; // max thumb travel (px)
+            let activePtr = null, originX = 0, originY = 0;
+
+            function applyJoy(dx, dy) {
+                const len = Math.sqrt(dx*dx + dy*dy);
+                const clamped = Math.min(len, RADIUS);
+                const nx = len > 0.001 ? dx/len : 0;
+                const ny = len > 0.001 ? dy/len : 0;
+                thumb.style.left = (80 + nx*clamped) + 'px';
+                thumb.style.top  = (80 + ny*clamped) + 'px';
+
+                const dead = 0.25;
+                keys.w = ny < -dead;
+                keys.s = ny >  dead;
+                keys.a = nx < -dead;
+                keys.d = nx >  dead;
+            }
+
+            function resetJoy() {
+                thumb.style.left = '80px'; thumb.style.top = '80px';
+                thumb.classList.remove('active');
+                keys.w = keys.s = keys.a = keys.d = false;
+                activePtr = null;
+            }
+
+            zone.addEventListener('pointerdown', e => {
+                e.preventDefault();
+                if (activePtr !== null) return;
+                activePtr = e.pointerId;
+                zone.setPointerCapture(e.pointerId);
+                const r = zone.getBoundingClientRect();
+                originX = r.left + r.width/2;
+                originY = r.top  + r.height/2;
+                thumb.classList.add('active');
+                applyJoy(e.clientX - originX, e.clientY - originY);
+            }, { passive: false });
+
+            zone.addEventListener('pointermove', e => {
+                if (e.pointerId !== activePtr) return;
+                e.preventDefault();
+                applyJoy(e.clientX - originX, e.clientY - originY);
+            }, { passive: false });
+
+            zone.addEventListener('pointerup',     e => { if (e.pointerId === activePtr) resetJoy(); });
+            zone.addEventListener('pointercancel', e => { if (e.pointerId === activePtr) resetJoy(); });
         }
 
         function startMultiplayer() {
