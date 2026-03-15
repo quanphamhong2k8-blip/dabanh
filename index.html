@@ -277,7 +277,7 @@
         let jumpCooldown = 0;
         let currentRoom = "", myName = "Robot";
         let myRef = null, syncInterval = null;
-        let ballRef = null, amBallHost = false;
+                        let ballRef = null, amBallHost = false, lastBallSnap = {};
         let ntagCanvas, ntagCtx;
         let chatRef = null, lastChatTs = 0;
         const chatBubbles = {};
@@ -331,13 +331,8 @@
             const fill = new THREE.DirectionalLight(0x4488ff, 0.8);
             fill.position.set(-10, 5, -10); scene.add(fill);
 
-            scene.add(new THREE.GridHelper(60, 60, 0x00d4ff, 0x1a2233));
+            createPitch();
             createGoals();
-            const plane = new THREE.Mesh(
-                new THREE.PlaneGeometry(60, 60),
-                new THREE.MeshStandardMaterial({ color: 0x080c14, roughness: 1 })
-            );
-            plane.rotation.x = -Math.PI / 2; plane.position.y = -0.01; scene.add(plane);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -481,6 +476,118 @@
                     if (dot < 5) { ballVel.x += nx*(5-dot); ballVel.z += nz*(5-dot); }
                 }
             }
+        }
+
+        function createPitch() {
+            // --- Nền cỏ sọc ---
+            const W = 60, H = 60;
+            const tc = document.createElement('canvas');
+            tc.width = 1024; tc.height = 1024;
+            const cx = tc.getContext('2d');
+
+            // Sọc cỏ xen kẽ
+            const stripes = 10;
+            const sw = tc.width / stripes;
+            for (let i = 0; i < stripes; i++) {
+                cx.fillStyle = i % 2 === 0 ? '#0e3d18' : '#114a1e';
+                cx.fillRect(i * sw, 0, sw, tc.height);
+            }
+            const grassTex = new THREE.CanvasTexture(tc);
+            grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
+            grassTex.repeat.set(1, 1);
+
+            const ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(W, H),
+                new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.9, metalness: 0 })
+            );
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -0.01;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // --- Vạch kẻ sân ---
+            const lineMat = new THREE.MeshBasicMaterial({ color: 0xccddcc, depthWrite: false });
+            function addLine(x1,z1,x2,z2, thick=0.18) {
+                const dx = x2-x1, dz = z2-z1;
+                const len = Math.sqrt(dx*dx+dz*dz);
+                const angle = Math.atan2(dx, dz);
+                const mesh = new THREE.Mesh(
+                    new THREE.PlaneGeometry(thick, len),
+                    lineMat
+                );
+                mesh.rotation.x = -Math.PI/2;
+                mesh.rotation.z = -angle;
+                mesh.position.set((x1+x2)/2, 0.01, (z1+z2)/2);
+                scene.add(mesh);
+            }
+            function addCircle(cx, cz, r, segs=64, thick=0.18) {
+                for (let i=0; i<segs; i++) {
+                    const a1 = (i/segs)*Math.PI*2, a2 = ((i+1)/segs)*Math.PI*2;
+                    addLine(cx+Math.sin(a1)*r, cz+Math.cos(a1)*r, cx+Math.sin(a2)*r, cz+Math.cos(a2)*r, thick);
+                }
+            }
+            function addArc(cx, cz, r, startA, endA, segs=32, thick=0.18) {
+                for (let i=0; i<segs; i++) {
+                    const a1 = startA+(i/segs)*(endA-startA);
+                    const a2 = startA+((i+1)/segs)*(endA-startA);
+                    addLine(cx+Math.sin(a1)*r, cz+Math.cos(a1)*r, cx+Math.sin(a2)*r, cz+Math.cos(a2)*r, thick);
+                }
+            }
+
+            // Đường biên ngoài
+            addLine(-28,-28, 28,-28);
+            addLine( 28,-28, 28, 28);
+            addLine( 28, 28,-28, 28);
+            addLine(-28, 28,-28,-28);
+
+            // Đường giữa sân (ngang)
+            addLine(-28, 0, 28, 0);
+
+            // Vòng tròn giữa sân
+            addCircle(0, 0, 6);
+            // Chấm giữa
+            const dotGeo = new THREE.CircleGeometry(0.22, 16);
+            const dot = new THREE.Mesh(dotGeo, lineMat);
+            dot.rotation.x = -Math.PI/2; dot.position.y = 0.01;
+            scene.add(dot);
+
+            // Khung cấm địa lớn (penalty area) – 2 đầu
+            const PAW = 22, PAD = 10;
+            // Đầu +Z
+            addLine(-PAW/2, 28, -PAW/2, 28-PAD);
+            addLine( PAW/2, 28,  PAW/2, 28-PAD);
+            addLine(-PAW/2, 28-PAD, PAW/2, 28-PAD);
+            // Đầu -Z
+            addLine(-PAW/2,-28, -PAW/2,-(28-PAD));
+            addLine( PAW/2,-28,  PAW/2,-(28-PAD));
+            addLine(-PAW/2,-(28-PAD), PAW/2,-(28-PAD));
+
+            // Khung cấm địa nhỏ (goal area)
+            const GAW = 10, GAD = 4;
+            addLine(-GAW/2, 28, -GAW/2, 28-GAD);
+            addLine( GAW/2, 28,  GAW/2, 28-GAD);
+            addLine(-GAW/2, 28-GAD, GAW/2, 28-GAD);
+
+            addLine(-GAW/2,-28, -GAW/2,-(28-GAD));
+            addLine( GAW/2,-28,  GAW/2,-(28-GAD));
+            addLine(-GAW/2,-(28-GAD), GAW/2,-(28-GAD));
+
+            // Chấm phạt đền
+            [-28+11, 28-11].forEach(pz => {
+                const pd = new THREE.Mesh(new THREE.CircleGeometry(0.22, 16), lineMat);
+                pd.rotation.x = -Math.PI/2; pd.position.set(0, 0.01, pz); scene.add(pd);
+            });
+
+            // Cung phạt đền (D-arc)
+            addArc(0,  28-11, 7.3,  Math.PI*0.82, Math.PI*1.18, 24);
+            addArc(0,-(28-11),7.3, -Math.PI*0.18, Math.PI*0.18, 24);
+
+            // 4 góc sân (cung góc)
+            const CR = 1.2;
+            addArc(-28,-28, CR, 0,        Math.PI/2, 10);
+            addArc( 28,-28, CR, Math.PI/2, Math.PI,  10);
+            addArc( 28, 28, CR, Math.PI,  Math.PI*1.5,10);
+            addArc(-28, 28, CR, Math.PI*1.5, Math.PI*2,10);
         }
 
         function createGoals() {
@@ -645,9 +752,11 @@
                     // Cập nhật/tạo robot người khác
                     for (const id in others) { updateOtherRobot(id, others[id]); }
 
-                    // Người có id nhỏ nhất làm host bóng
+                    // Người có id nhỏ nhất làm host bóng, reset snap khi đổi host
                     const ids = Object.keys(users).sort();
+                    const wasHost = amBallHost;
                     amBallHost = (ids[0] === myId);
+                    if (amBallHost && !wasHost) lastBallSnap = {}; // force push ngay khi lên host
                 });
 
                 syncInterval = setInterval(() => {
@@ -659,27 +768,34 @@
                     });
                     // Chỉ host mới push vị trí bóng
                     if (amBallHost && soccerBall) {
-                        set(ref(db, `rooms/${currentRoom}/ball`), {
-                            x: +soccerBall.position.x.toFixed(4),
-                            z: +soccerBall.position.z.toFixed(4),
-                            vx: +ballVel.x.toFixed(4),
-                            vz: +ballVel.z.toFixed(4)
-                        });
+                        const bx = +soccerBall.position.x.toFixed(3);
+                        const bz = +soccerBall.position.z.toFixed(3);
+                        const vx = +ballVel.x.toFixed(3);
+                        const vz = +ballVel.z.toFixed(3);
+                        // Chỉ gửi khi có thay đổi đáng kể (giảm write)
+                        const moved = Math.abs(bx - (lastBallSnap.x||0)) > 0.05
+                                   || Math.abs(bz - (lastBallSnap.z||0)) > 0.05
+                                   || Math.abs(vx - (lastBallSnap.vx||0)) > 0.1
+                                   || Math.abs(vz - (lastBallSnap.vz||0)) > 0.1;
+                        if (moved) {
+                            lastBallSnap = { x: bx, z: bz, vx, vz };
+                            set(ref(db, `rooms/${currentRoom}/ball`), lastBallSnap);
+                        }
                     }
                 }, 50);
 
-                // Guest nhận vị trí bóng từ Firebase
+                // Guest nhận vị trí bóng từ Firebase — lerp mượt, không ghi đè vận tốc đột ngột
                 ballRef = ref(db, `rooms/${currentRoom}/ball`);
                 onValue(ballRef, snapshot => {
                     if (amBallHost || !soccerBall) return;
                     const d = snapshot.val();
                     if (!d) return;
-                    // Lerp mượt về vị trí thực
-                    soccerBall.position.x += (d.x - soccerBall.position.x) * 0.4;
-                    soccerBall.position.z += (d.z - soccerBall.position.z) * 0.4;
+                    const lerpPos = 0.3, lerpVel = 0.5;
+                    soccerBall.position.x += (d.x - soccerBall.position.x) * lerpPos;
+                    soccerBall.position.z += (d.z - soccerBall.position.z) * lerpPos;
                     soccerBall.position.y  = BALL_RADIUS;
-                    ballVel.x = d.vx ?? 0;
-                    ballVel.z = d.vz ?? 0;
+                    ballVel.x += ((d.vx ?? 0) - ballVel.x) * lerpVel;
+                    ballVel.z += ((d.vz ?? 0) - ballVel.z) * lerpVel;
                 });
 
                 chatRef = ref(db, `rooms/${currentRoom}/chat`);
